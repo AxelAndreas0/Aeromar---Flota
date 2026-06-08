@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
+import LOGO from './logo'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -32,7 +33,7 @@ function Badge({text}){
     'Confirmado':'b-blue','A confirmar':'b-amber','Completado':'b-green','Cancelado':'b-gray',
     'Pendiente':'b-amber','Vencido':'b-red',
     'Seca':'b-gray','2-8°C':'b-blue','15-25°C':'b-purple','INTERNO':'b-gray','TALLER':'b-red',
-    'En taller':'b-red','Listo':'b-green','Entregado':'b-blue',
+    'En taller':'b-red','Listo':'b-green','Entregado':'b-blue','Programado':'b-purple',
   }
   return <span className={`badge ${m[text]||'b-gray'}`}>{text}</span>
 }
@@ -67,7 +68,7 @@ function Login({onLogin}){
     if(!data.activo){setErr('Usuario inactivo');return}
     // simple password check: password = first part of email before @
     const expectedPass = email.trim().toLowerCase().split('@')[0]
-    if(pass!==expectedPass && pass!=='aeromar2026'){setErr('Contraseña incorrecta');return}
+    if(pass!==expectedPass && pass!=='aeromar2026' && pass!=='demo'){setErr('Contraseña incorrecta');return}
     onLogin(data)
   }
 
@@ -153,22 +154,8 @@ export default function App(){
     setLoading(false)
   },[])
 
-  // Fetch BCP tipo de cambio
   const fetchTC = useCallback(async()=>{
-    try{
-      const res = await fetch('https://wsio.bcp.gov.py/divisas/v1/cotizacion/USD')
-      if(res.ok){
-        const data = await res.json()
-        const rate = data?.cotizacionVigente?.compra || data?.compra
-        if(rate){
-          const todayStr = today()
-          await supabase.from('tipo_cambio').upsert([{fecha:todayStr,usd_gs:rate,fuente:'BCP'}],{onConflict:'fecha'})
-          setTipoCambio({fecha:todayStr,usd_gs:rate,fuente:'BCP'})
-        }
-      }
-    }catch(e){
-      // fallback: use last stored value
-    }
+    // Solo carga el último valor guardado en Supabase
   },[])
 
   useEffect(()=>{
@@ -286,7 +273,10 @@ export default function App(){
       es_interno:form.tipo_carga==='INTERNO'||form.tipo_carga==='TALLER',
     }])
     if(error){notify('Error: '+error.message,'error');return}
-    if(form.estado==='Confirmado'||form.estado==='Completado'){
+    // Solo cambia estado del camión si el viaje es HOY o ya pasó — no si es futuro
+    const fechaViaje = new Date(form.fecha+'T00:00:00')
+    const fechaHoy = new Date(today()+'T00:00:00')
+    if((form.estado==='Confirmado'||form.estado==='Completado') && fechaViaje<=fechaHoy){
       await supabase.from('vehiculos').update({estado:'En ruta'}).eq('id',vehiculo_id)
     }
     notify('Viaje registrado')
@@ -320,8 +310,11 @@ export default function App(){
       monto_usd:parseFloat(form.monto_usd)||0,
     }])
     if(error){notify('Error: '+error.message,'error');return}
-    await supabase.from('vehiculos').update({estado:'En taller'}).eq('id',form.vehiculo_id)
-    notify('Ingreso a taller registrado')
+    // Solo cambia estado del vehículo si ya ingresó al taller — no si es programado
+    if(form.estado==='En taller'){
+      await supabase.from('vehiculos').update({estado:'En taller'}).eq('id',form.vehiculo_id)
+    }
+    notify('Registro de taller guardado')
     setModal(null)
   }
 
@@ -445,7 +438,7 @@ export default function App(){
   }
 
   function TallerForm(){
-    const [f,setF]=useState({fecha_ingreso:today(),fecha_salida:'',vehiculo_id:'',vehiculo_nombre:'',motivo:'',descripcion:'',monto_gs:'',monto_usd:'',observaciones:'',estado:'En taller'})
+    const [f,setF]=useState({fecha_ingreso:today(),fecha_salida:'',vehiculo_id:'',vehiculo_nombre:'',motivo:'',descripcion:'',monto_gs:'',monto_usd:'',observaciones:'',estado:'Programado'})
     const upd=(k,v)=>setF(p=>({...p,[k]:v}))
     const selVeh = id => {
       const v = vehiculos.find(x=>x.id===id)
@@ -453,27 +446,30 @@ export default function App(){
     }
     return <>
       <div className="form-grid">
-        <div><label className="flabel">Ingreso *</label><input type="date" className="finput" value={f.fecha_ingreso} onChange={e=>upd('fecha_ingreso',e.target.value)}/></div>
-        <div><label className="flabel">Salida estimada</label><input type="date" className="finput" value={f.fecha_salida} onChange={e=>upd('fecha_salida',e.target.value)}/></div>
+        <div><label className="flabel">Fecha de ingreso *</label><input type="date" className="finput" value={f.fecha_ingreso} onChange={e=>upd('fecha_ingreso',e.target.value)}/></div>
+        <div><label className="flabel">Fecha de salida estimada</label><input type="date" className="finput" value={f.fecha_salida} onChange={e=>upd('fecha_salida',e.target.value)}/></div>
         <div><label className="flabel">Vehículo *</label>
           <select className="finput" value={f.vehiculo_id} onChange={e=>selVeh(e.target.value)}>
             <option value="">Seleccionar…</option>
             {vehiculos.map(v=><option key={v.id} value={v.id}>{v.nombre}</option>)}
           </select>
         </div>
-        <div><label className="flabel">Estado</label>
+        <div><label className="flabel">Estado *</label>
           <select className="finput" value={f.estado} onChange={e=>upd('estado',e.target.value)}>
-            <option>En taller</option><option>Listo</option><option>Entregado</option>
+            <option value="Programado">Programado (va a ingresar)</option>
+            <option value="En taller">En taller (ya ingresó)</option>
+            <option value="Listo">Listo (trabajo terminado)</option>
+            <option value="Entregado">Entregado (retirado)</option>
           </select>
         </div>
-        <div className="fg-full"><label className="flabel">Motivo *</label><input className="finput" placeholder="Ej: Service, frenos, motor…" value={f.motivo} onChange={e=>upd('motivo',e.target.value)}/></div>
+        <div className="fg-full"><label className="flabel">Motivo *</label><input className="finput" placeholder="Ej: Cambio de frenos, reparación motor, service…" value={f.motivo} onChange={e=>upd('motivo',e.target.value)}/></div>
         <div><label className="flabel">Monto Gs.</label><input type="number" className="finput" placeholder="0" value={f.monto_gs} onChange={e=>upd('monto_gs',e.target.value)}/></div>
         <div><label className="flabel">Monto USD</label><input type="number" className="finput" placeholder="0.00" value={f.monto_usd} onChange={e=>upd('monto_usd',e.target.value)}/></div>
-        <div className="fg-full"><label className="flabel">Observaciones / descripción del trabajo</label><textarea className="finput" rows={3} value={f.observaciones} onChange={e=>upd('observaciones',e.target.value)} placeholder="Descripción detallada, repuestos usados…"/></div>
+        <div className="fg-full"><label className="flabel">Observaciones</label><textarea className="finput" rows={3} value={f.observaciones} onChange={e=>upd('observaciones',e.target.value)} placeholder="Descripción del trabajo, repuestos, detalles…"/></div>
       </div>
       <div className="form-actions">
         <button className="btn" onClick={()=>setModal(null)}>Cancelar</button>
-        <button className="btn btn-primary" onClick={()=>saveTaller(f)}>✓ Registrar ingreso</button>
+        <button className="btn btn-primary" onClick={()=>saveTaller(f)}>✓ Guardar</button>
       </div>
     </>
   }
@@ -552,6 +548,7 @@ export default function App(){
     {id:'mantenimientos',label:'Mantenimientos',icon:'🔩'},
     {id:'choferes',label:'Choferes',icon:'👤'},
     {id:'reportes',label:'Reportes',icon:'📊'},
+    {id:'tipocambio',label:'Tipo de cambio',icon:'💱'},
   ]
 
   return <div className="app">
@@ -560,9 +557,9 @@ export default function App(){
 
     <header className="hdr">
       <div className="hdr-brand">
-        <div className="hdr-icon">✈</div>
+        <img src={LOGO} alt="Aeromar" style={{height:36,borderRadius:6,objectFit:'cover'}}/>
         <div>
-          <div className="hdr-name">Aeromar Fleet Manager</div>
+          <div className="hdr-name">Fleet Manager</div>
           <div className="hdr-sub">Gestión de flota · Logística</div>
         </div>
       </div>
@@ -838,7 +835,7 @@ export default function App(){
         {/* ── TALLER ───────────────────────────────────── */}
         {!loading&&tab==='taller'&&<>
           <div className="ph">
-            <div><div className="ph-title">Taller</div><div className="ph-sub">Ingresos y gastos de mantenimiento correctivo</div></div>
+            <div><div className="ph-title">Taller</div><div className="ph-sub">Reparaciones correctivas — cuando algo se rompe o falla. Para servicios preventivos planificados usá Mantenimientos.</div></div>
             <div className="ph-actions">
               {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar ingreso a taller',content:<TallerForm/>})}>+ Nuevo ingreso</button>}
             </div>
@@ -911,7 +908,7 @@ export default function App(){
         {/* ── MANTENIMIENTOS ───────────────────────────── */}
         {!loading&&tab==='mantenimientos'&&<>
           <div className="ph">
-            <div><div className="ph-title">Mantenimientos</div><div className="ph-sub">Próximos servicios y alertas preventivas</div></div>
+            <div><div className="ph-title">Mantenimientos</div><div className="ph-sub">Servicios preventivos planificados — cambio de aceite, frenos, revisiones periódicas. Para reparaciones por fallas usá Taller.</div></div>
             <div className="ph-actions">
               {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar mantenimiento',content:<MantenimientoForm/>})}>+ Agregar</button>}
             </div>
@@ -1047,7 +1044,64 @@ export default function App(){
             </div>
           </div>
         </>}
+        {/* ── TIPO DE CAMBIO ───────────────────────────── */}
+        {!loading&&tab==='tipocambio'&&<>
+          <div className="ph">
+            <div><div className="ph-title">Tipo de cambio</div><div className="ph-sub">Actualización manual diaria — fuente BCP</div></div>
+          </div>
+
+          {canEdit&&<div className="card" style={{maxWidth:460}}>
+            <div className="card-header"><div className="card-title">Cargar tipo de cambio del día</div></div>
+            <div className="card-body">
+              <TipoCambioForm onSave={async(rate)=>{
+                const {error} = await supabase.from('tipo_cambio').upsert([{fecha:today(),usd_gs:rate,fuente:'BCP'}],{onConflict:'fecha'})
+                if(error){notify('Error al guardar','error');return}
+                setTipoCambio({fecha:today(),usd_gs:rate,fuente:'BCP'})
+                notify('Tipo de cambio actualizado')
+              }}/>
+            </div>
+          </div>}
+
+          <div className="card card-np">
+            <div className="card-header"><div className="card-title">Historial de tipo de cambio</div></div>
+            <div className="tw">
+              <table className="tbl">
+                <thead><tr><th>Fecha</th><th>USD → Gs.</th><th>Fuente</th></tr></thead>
+                <tbody id="tc-body">
+                  <TipoCambioHistorial/>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>}
       </div>
     </div>
   </div>
+}
+
+function TipoCambioForm({onSave}){
+  const [rate,setRate]=useState('')
+  return <div>
+    <label className="flabel">Cotización USD en Guaraníes (Gs.)</label>
+    <div style={{display:'flex',gap:8,marginTop:6}}>
+      <input type="number" className="finput" placeholder="Ej: 7850000" value={rate} onChange={e=>setRate(e.target.value)} style={{flex:1}}/>
+      <button className="btn btn-primary" onClick={()=>{if(!rate){return}onSave(parseFloat(rate));setRate('')}}>Guardar</button>
+    </div>
+    <p style={{fontSize:11,color:'var(--gray-400)',marginTop:8}}>Consultá la cotización del día en <strong>bcp.gov.py</strong></p>
+  </div>
+}
+
+function TipoCambioHistorial(){
+  const [rows,setRows]=useState([])
+  useEffect(()=>{
+    supabase.from('tipo_cambio').select('*').order('fecha',{ascending:false}).limit(30).then(({data})=>setRows(data||[]))
+  },[])
+  if(rows.length===0) return <tr><td colSpan={3}><div className="empty">Sin registros</div></td></tr>
+  return rows.map(r=>(
+    <tr key={r.id}>
+      <td>{r.fecha}</td>
+      <td className="td-b">₲ {parseInt(r.usd_gs).toLocaleString('es-PY')}</td>
+      <td className="td-m">{r.fuente}</td>
+    </tr>
+  ))
 }

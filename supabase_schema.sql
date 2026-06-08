@@ -164,7 +164,8 @@ CREATE TABLE config_alertas (
 INSERT INTO usuarios (email, nombre, rol) VALUES
   ('agaier@aeromar.com.py',      'Axel Gaier',      'admin'),
   ('logistica3@aeromar.com.py',  'Andrea Amarilla',  'operador'),
-  ('egarcete@aeromar.com.py',    'Ernesto Garcete',  'visualizador');
+  ('egarcete@aeromar.com.py',    'Ernesto Garcete',  'visualizador'),
+  ('demo@aeromar.com.py',        'Demo Aeromar',     'admin');
 
 -- ── Datos iniciales: vehículos ───────────────────────────────────
 INSERT INTO vehiculos (nombre, marca, modelo, chapa, tipo, chofer_asignado, limite_combustible) VALUES
@@ -224,3 +225,72 @@ ALTER PUBLICATION supabase_realtime ADD TABLE combustible;
 ALTER PUBLICATION supabase_realtime ADD TABLE gastos_taller;
 ALTER PUBLICATION supabase_realtime ADD TABLE habilitaciones;
 ALTER PUBLICATION supabase_realtime ADD TABLE mantenimientos;
+
+-- ── DATOS DEMO ──────────────────────────────────────────────
+-- Ejecutar SOLO si querés cargar datos de demostración
+
+-- Viajes demo
+INSERT INTO viajes (fecha,camion,vehiculo_nombre,chofer,cliente,origen,destino,tipo_carga,km_recorridos,precio_gs,precio_usd,nro_viaje,factura,estado,es_interno,observaciones) VALUES
+  ('2026-06-01','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','Aeromar','AISP','2-8°C',45,850000,0,1,'1201','Completado',false,'13 pallets medicamentos'),
+  ('2026-06-01','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','AISP','Encarnación','Seca',320,1200000,0,1,'1202','Completado',false,'Carga completa'),
+  ('2026-06-02','OBL344','711 OBL344','Eliseo Escobar','Aeromar Internacional SRL','Aeromar','CDE','Seca',350,950000,0,1,'1203','Completado',false,''),
+  ('2026-06-02','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,800000,0,2,'1204','Completado',false,'Retorno'),
+  ('2026-06-03','AERO003','Aero 003','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','PJC','15-25°C',410,1100000,0,1,'1205','Completado',false,''),
+  ('2026-06-03','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Fapasa','AISP','2-8°C',120,750000,0,1,'1206','Completado',false,'Visicooler 3 pallets'),
+  ('2026-06-04','AERO004','Aero 004','Jesús Fleitas','Aeromar Internacional SRL','Aeromar','Villarrica','Seca',190,600000,0,1,'1207','Confirmado',false,''),
+  ('2026-06-05','ABN700','708 ABN700','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','AISP','INTERNO',30,0,0,1,'','Completado',true,'Traslado interno'),
+  ('2026-06-05','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,820000,0,1,'1208','A confirmar',false,'Pendiente confirmación cliente'),
+  ('2026-06-06','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Aeromar','Asunción','Seca',25,350000,0,1,'1209','Confirmado',false,'Entrega ciudad');
+
+-- Combustible demo
+INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
+SELECT '2026-06-01',id,'Aero 001',120,720000,'Línea de crédito','Puma' FROM vehiculos WHERE chapa='AERO001';
+INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
+SELECT '2026-06-01',id,'Aero 002',95,570000,'Línea de crédito','Shell' FROM vehiculos WHERE chapa='AERO002';
+INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
+SELECT '2026-06-02',id,'711 OBL344',80,480000,'Manual','Copa' FROM vehiculos WHERE chapa='OBL344';
+INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
+SELECT '2026-06-03',id,'Aero 003',110,660000,'Línea de crédito','Puma' FROM vehiculos WHERE chapa='AERO003';
+INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
+SELECT '2026-06-04',id,'Aero 001',100,600000,'Línea de crédito','Puma' FROM vehiculos WHERE chapa='AERO001';
+
+-- Taller demo
+INSERT INTO gastos_taller (fecha_ingreso,fecha_salida,vehiculo_id,vehiculo_nombre,motivo,monto_gs,estado,observaciones)
+SELECT '2026-05-20','2026-05-22',id,'Aero 003','Cambio de frenos traseros',2500000,'Entregado','Pastillas y discos reemplazados' FROM vehiculos WHERE chapa='AERO003';
+INSERT INTO gastos_taller (fecha_ingreso,fecha_salida,vehiculo_id,vehiculo_nombre,motivo,monto_gs,estado,observaciones)
+SELECT '2026-06-03',NULL,id,'708 ABN700','Falla eléctrica tablero',0,'En taller','En diagnóstico, esperando presupuesto' FROM vehiculos WHERE chapa='ABN700';
+INSERT INTO gastos_taller (fecha_ingreso,fecha_salida,vehiculo_id,vehiculo_nombre,motivo,monto_gs,estado,observaciones)
+SELECT '2026-06-10',NULL,id,'JAC BYR033','Service programado 50.000 km',1800000,'Programado','Cambio de aceite, filtros y revisión general' FROM vehiculos WHERE chapa='BYR033';
+
+-- Habilitaciones demo
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'Aero 001','Habilitación','2026-08-15',30 FROM vehiculos WHERE chapa='AERO001';
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'Aero 001','DINATRAN','2026-07-10',30 FROM vehiculos WHERE chapa='AERO001';
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'Aero 002','Habilitación','2026-09-20',30 FROM vehiculos WHERE chapa='AERO002';
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'Aero 002','DINATRAN','2026-06-25',15 FROM vehiculos WHERE chapa='AERO002';
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'711 OBL344','Habilitación','2026-06-18',15 FROM vehiculos WHERE chapa='OBL344';
+INSERT INTO habilitaciones (vehiculo_id,vehiculo_nombre,tipo,fecha_vencimiento,dias_alerta)
+SELECT id,'JAC BYR033','DINATRAN','2026-07-30',30 FROM vehiculos WHERE chapa='BYR033';
+
+-- Mantenimientos demo
+INSERT INTO mantenimientos (vehiculo_id,vehiculo_nombre,tipo,fecha_ultimo,fecha_proximo,km_ultimo,km_proximo,dias_alerta,monto_gs,estado)
+SELECT id,'Aero 001','Cambio de aceite y filtros','2026-04-01','2026-07-01',145000,155000,15,800000,'Pendiente' FROM vehiculos WHERE chapa='AERO001';
+INSERT INTO mantenimientos (vehiculo_id,vehiculo_nombre,tipo,fecha_ultimo,fecha_proximo,km_ultimo,km_proximo,dias_alerta,monto_gs,estado)
+SELECT id,'Aero 002','Revisión de frenos','2026-03-15','2026-06-15',98000,108000,15,1200000,'Pendiente' FROM vehiculos WHERE chapa='AERO002';
+INSERT INTO mantenimientos (vehiculo_id,vehiculo_nombre,tipo,fecha_ultimo,fecha_proximo,km_ultimo,km_proximo,dias_alerta,monto_gs,estado)
+SELECT id,'711 OBL344','Service general 80.000 km','2026-01-10','2026-07-10',78000,80000,30,2500000,'Pendiente' FROM vehiculos WHERE chapa='OBL344';
+
+-- Tipo de cambio demo
+INSERT INTO tipo_cambio (fecha,usd_gs,fuente) VALUES ('2026-06-04',7850000,'BCP') ON CONFLICT (fecha) DO NOTHING;
+
+-- Actualizar crédito utilizado demo
+UPDATE vehiculos SET credito_utilizado=1320000 WHERE chapa='AERO001';
+UPDATE vehiculos SET credito_utilizado=570000  WHERE chapa='AERO002';
+UPDATE vehiculos SET credito_utilizado=480000  WHERE chapa='OBL344';
+UPDATE vehiculos SET credito_utilizado=660000  WHERE chapa='AERO003';
+-- Estado taller para ABN700
+UPDATE vehiculos SET estado='En taller' WHERE chapa='ABN700';
