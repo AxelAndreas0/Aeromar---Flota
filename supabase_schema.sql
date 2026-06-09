@@ -230,17 +230,17 @@ ALTER PUBLICATION supabase_realtime ADD TABLE mantenimientos;
 -- Ejecutar SOLO si querés cargar datos de demostración
 
 -- Viajes demo
-INSERT INTO viajes (fecha,camion,vehiculo_nombre,chofer,cliente,origen,destino,tipo_carga,km_recorridos,precio_gs,precio_usd,nro_viaje,factura,estado,es_interno,observaciones) VALUES
-  ('2026-06-01','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','Aeromar','AISP','2-8°C',45,850000,0,1,'1201','Completado',false,'13 pallets medicamentos'),
-  ('2026-06-01','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','AISP','Encarnación','Seca',320,1200000,0,1,'1202','Completado',false,'Carga completa'),
-  ('2026-06-02','OBL344','711 OBL344','Eliseo Escobar','Aeromar Internacional SRL','Aeromar','CDE','Seca',350,950000,0,1,'1203','Completado',false,''),
-  ('2026-06-02','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,800000,0,2,'1204','Completado',false,'Retorno'),
-  ('2026-06-03','AERO003','Aero 003','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','PJC','15-25°C',410,1100000,0,1,'1205','Completado',false,''),
-  ('2026-06-03','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Fapasa','AISP','2-8°C',120,750000,0,1,'1206','Completado',false,'Visicooler 3 pallets'),
-  ('2026-06-04','AERO004','Aero 004','Jesús Fleitas','Aeromar Internacional SRL','Aeromar','Villarrica','Seca',190,600000,0,1,'1207','Confirmado',false,''),
-  ('2026-06-05','ABN700','708 ABN700','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','AISP','INTERNO',30,0,0,1,'','Completado',true,'Traslado interno'),
-  ('2026-06-05','AERO001','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,820000,0,1,'1208','A confirmar',false,'Pendiente confirmación cliente'),
-  ('2026-06-06','AERO002','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Aeromar','Asunción','Seca',25,350000,0,1,'1209','Confirmado',false,'Entrega ciudad');
+INSERT INTO viajes (fecha,vehiculo_nombre,chofer,cliente,origen,destino,tipo_carga,km_recorridos,precio_gs,precio_usd,nro_viaje,factura,estado,es_interno,observaciones) VALUES
+  ('2026-06-01','Aero 001','Silvio Parris','Aeromar Internacional SRL','Aeromar','AISP','2-8°C',45,850000,0,1,'1201','Completado',false,'13 pallets medicamentos'),
+  ('2026-06-01','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','AISP','Encarnación','Seca',320,1200000,0,1,'1202','Completado',false,'Carga completa'),
+  ('2026-06-02','711 OBL344','Eliseo Escobar','Aeromar Internacional SRL','Aeromar','CDE','Seca',350,950000,0,1,'1203','Completado',false,''),
+  ('2026-06-02','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,800000,0,2,'1204','Completado',false,'Retorno'),
+  ('2026-06-03','Aero 003','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','PJC','15-25°C',410,1100000,0,1,'1205','Completado',false,''),
+  ('2026-06-03','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Fapasa','AISP','2-8°C',120,750000,0,1,'1206','Completado',false,'Visicooler 3 pallets'),
+  ('2026-06-04','Aero 004','Jesús Fleitas','Aeromar Internacional SRL','Aeromar','Villarrica','Seca',190,600000,0,1,'1207','Confirmado',false,''),
+  ('2026-06-05','708 ABN700','Gabriel Ávalos','Aeromar Internacional SRL','Aeromar','AISP','INTERNO',30,0,0,1,'','Completado',true,'Traslado interno'),
+  ('2026-06-05','Aero 001','Silvio Parris','Aeromar Internacional SRL','AISP','Aeromar','2-8°C',45,820000,0,1,'1208','A confirmar',false,'Pendiente confirmación cliente'),
+  ('2026-06-06','Aero 002','Cristiam Benítez','Aeromar Internacional SRL','Aeromar','Asunción','Seca',25,350000,0,1,'1209','Confirmado',false,'Entrega ciudad');
 
 -- Combustible demo
 INSERT INTO combustible (fecha,vehiculo_id,vehiculo_nombre,litros,precio_gs,tipo_carga,proveedor) 
