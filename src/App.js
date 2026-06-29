@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 import LOGO from './logo'
+import {
+  LayoutDashboard, Truck, Map, Fuel, Wrench, ClipboardList,
+  Settings, Users, BarChart2, ArrowLeftRight
+} from 'lucide-react'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const TIPOS_CARGA = ['Seca','2-8°C','15-25°C','INTERNO','TALLER','Otro']
@@ -13,6 +17,22 @@ const fmtGs = n => parseInt(n||0).toLocaleString('es-PY')
 const fmtUsd = n => parseFloat(n||0).toLocaleString('es-PY',{minimumFractionDigits:2,maximumFractionDigits:2})
 const diffDays = d => Math.ceil((new Date(d+'T00:00:00') - new Date()) / 86400000)
 const IS_DEMO = email => email === 'demo@aeromar.com.py'
+
+// Orden fijo de vehículos: Aero 001-004, otros camiones, fiorinos/autos, motos
+const ORDEN_VEHICULOS = [
+  'AERO001','AERO002','AERO003','AERO004',
+  'OBL344','ABN700','BYR033',
+  'HEL642','AABG508','HFG381','BOV216',
+  'AAME125','AAME126'
+]
+const sortVehiculos = (arr) => [...arr].sort((a,b)=>{
+  const ia = ORDEN_VEHICULOS.indexOf(a.chapa)
+  const ib = ORDEN_VEHICULOS.indexOf(b.chapa)
+  if(ia===-1&&ib===-1) return a.nombre.localeCompare(b.nombre)
+  if(ia===-1) return 1
+  if(ib===-1) return -1
+  return ia - ib
+})
 
 function Toast({msg,type,show}){
   if(!show) return null
@@ -51,13 +71,13 @@ function Login({onLogin}){
   const [pass,setPass]=useState('')
   const [err,setErr]=useState('')
   const [loading,setLoading]=useState(false)
-  const handle = async e => {
-    e.preventDefault(); setErr(''); setLoading(true)
-    const {data,error} = await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password:pass})
+  const handle=async()=>{
+    setErr('');setLoading(true)
+    const {data,error}=await supabase.auth.signInWithPassword({email,password:pass})
     if(error){setErr('Email o contraseña incorrectos');setLoading(false);return}
-    const {data:profile} = await supabase.from('usuarios').select('*').eq('id',data.user.id).single()
-    if(!profile||!profile.activo){setErr('Perfil no encontrado o inactivo');setLoading(false);return}
-    onLogin(profile); setLoading(false)
+    const {data:profile}=await supabase.from('usuarios').select('*').eq('id',data.user.id).single()
+    if(!profile||!profile.activo){setErr('Usuario inactivo o sin acceso');setLoading(false);return}
+    onLogin(profile);setLoading(false)
   }
   return <div className="login-wrap">
     <div className="login-box">
@@ -67,17 +87,11 @@ function Login({onLogin}){
       </div>
       <p className="login-sub">Sistema de gestión de flota y logística</p>
       {err&&<div className="login-err">{err}</div>}
-      <form onSubmit={handle}>
-        <div style={{marginBottom:14}}>
-          <label className="flabel">Email</label>
-          <input className="finput" type="email" placeholder="usuario@aeromar.com.py" value={email} onChange={e=>setEmail(e.target.value)} required/>
-        </div>
-        <div style={{marginBottom:20}}>
-          <label className="flabel">Contraseña</label>
-          <input className="finput" type="password" placeholder="••••••••" value={pass} onChange={e=>setPass(e.target.value)} required/>
-        </div>
-        <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}} disabled={loading}>{loading?'Ingresando…':'Ingresar'}</button>
-      </form>
+      <label className="flabel">Email</label>
+      <input className="finput" style={{marginBottom:12}} type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handle()}/>
+      <label className="flabel">Contraseña</label>
+      <input className="finput" style={{marginBottom:20}} type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handle()}/>
+      <button className="btn btn-primary" style={{width:'100%'}} onClick={handle} disabled={loading}>{loading?'Ingresando…':'Ingresar'}</button>
     </div>
   </div>
 }
@@ -105,6 +119,10 @@ export default function App(){
   const [fVehiculo,setFVehiculo]=useState('')
   const [fChofer,setFChofer]=useState('')
   const [fEstado,setFEstado]=useState('')
+  const [fHabVehiculo,setFHabVehiculo]=useState('')
+  const [fManVehiculo,setFManVehiculo]=useState('')
+  const [consumos,setConsumos]=useState([])
+  const [editViaje,setEditViaje]=useState(null)
 
   const notify = useCallback((msg,type='success')=>{
     setToast({show:true,msg,type})
@@ -132,7 +150,7 @@ export default function App(){
     setLoading(true)
     const demo = IS_DEMO(user.email)
     const dq = t => supabase.from(t).select('*').eq('empresa_id',EMPRESA_ID).eq('es_demo',demo)
-    const [rv,rc,rco,rt,rh,rm,rtc,rca,rch] = await Promise.all([
+    const [rv,rc,rco,rt,rh,rm,rtc,rca,rch,rcon] = await Promise.all([
       dq('vehiculos').order('nombre'),
       dq('viajes').order('fecha',{ascending:false}),
       dq('combustible').order('fecha',{ascending:false}),
@@ -142,8 +160,9 @@ export default function App(){
       supabase.from('tipo_cambio').select('*').order('fecha',{ascending:false}).limit(1),
       supabase.from('config_alertas').select('*').eq('empresa_id',EMPRESA_ID).limit(1),
       supabase.from('choferes').select('*').eq('empresa_id',EMPRESA_ID).order('nombre'),
+      dq('consumo_vehiculo').order('fecha',{ascending:false}),
     ])
-    if(!rv.error) setVehiculos(rv.data||[])
+    if(!rv.error) setVehiculos(sortVehiculos(rv.data||[]))
     if(!rc.error) setViajes(rc.data||[])
     if(!rco.error) setCombustible(rco.data||[])
     if(!rt.error) setTaller(rt.data||[])
@@ -152,6 +171,7 @@ export default function App(){
     if(rtc.data?.length>0) setTipoCambio(rtc.data[0])
     if(rca.data?.length>0) setConfigAlertas(rca.data[0])
     if(!rch.error) setChoferes(rch.data||[])
+    if(!rcon.error) setConsumos(rcon.data||[])
     setLoading(false)
   },[user])
 
@@ -165,6 +185,7 @@ export default function App(){
       .on('postgres_changes',{event:'*',schema:'public',table:'gastos_taller'},loadAll)
       .on('postgres_changes',{event:'*',schema:'public',table:'habilitaciones'},loadAll)
       .on('postgres_changes',{event:'*',schema:'public',table:'mantenimientos'},loadAll)
+      .on('postgres_changes',{event:'*',schema:'public',table:'consumo_vehiculo'},loadAll)
       .subscribe()
     return ()=>supabase.removeChannel(ch)
   },[user,authChecked,loadAll])
@@ -218,6 +239,23 @@ export default function App(){
   const fuelPct=v=>{ if(!v.limite_combustible) return 0; return Math.min(100,Math.round((v.credito_utilizado/v.limite_combustible)*100)) }
   const fleetCardClass=e=>({'Libre':'libre','En ruta':'en-ruta','En taller':'en-taller','Reservado':'reservado','Fuera de servicio':'fuera'}[e]||'fuera')
 
+  // Consumo L/100km helpers
+  const getConsumoMes=(vehiculoId,mes,anio)=>{
+    const reg=consumos.filter(c=>{
+      const d=new Date(c.fecha+'T00:00:00')
+      return c.vehiculo_id===vehiculoId&&d.getMonth()===mes&&d.getFullYear()===anio
+    })
+    if(!reg.length) return null
+    const avg=reg.reduce((a,c)=>a+parseFloat(c.litros_100km),0)/reg.length
+    return avg.toFixed(1)
+  }
+  const getConsumoHistorico=(vehiculoId)=>{
+    const reg=consumos.filter(c=>c.vehiculo_id===vehiculoId)
+    if(!reg.length) return null
+    const avg=reg.reduce((a,c)=>a+parseFloat(c.litros_100km),0)/reg.length
+    return avg.toFixed(1)
+  }
+
   const saveViaje = async form => {
     const {fecha,vehiculo_id,vehiculo_nombre,chofer_id,chofer,origen,destino,tipo_carga}=form
     if(!fecha||!vehiculo_id||!chofer_id||!origen||!destino||!tipo_carga){notify('Completá los campos obligatorios *','warning');return}
@@ -240,6 +278,39 @@ export default function App(){
       await supabase.from('vehiculos').update({estado:'En ruta',odometro_actual:nuevoOdometro}).eq('id',vehiculo_id)
     }
     setSaving(false);notify('Viaje registrado');setModal(null)
+  }
+
+  const updateViaje = async form => {
+    if(!form.fecha||!form.vehiculo_id||!form.chofer_id||!form.origen||!form.destino||!form.tipo_carga){notify('Completá los campos obligatorios *','warning');return}
+    setSaving(true)
+    const km=parseInt(form.km_recorridos)||0
+    const {error}=await supabase.from('viajes').update({
+      fecha:form.fecha,vehiculo_id:form.vehiculo_id,vehiculo_nombre:form.vehiculo_nombre,
+      chofer_id:form.chofer_id,chofer:form.chofer,cliente:form.cliente||'Aeromar Internacional SRL',
+      origen:form.origen,destino:form.destino,tipo_carga:form.tipo_carga,km_recorridos:km,
+      precio_gs:parseInt(form.precio_gs)||0,precio_usd:parseFloat(form.precio_usd)||0,
+      nro_viaje:parseInt(form.nro_viaje)||1,factura:form.factura,nro_evento:form.nro_evento,
+      estado:form.estado,es_interno:form.tipo_carga==='INTERNO'||form.tipo_carga==='TALLER',
+      observaciones:form.observaciones,
+    }).eq('id',form.id)
+    if(error){setSaving(false);notify('Error: '+error.message,'error');return}
+    setSaving(false);notify('Viaje actualizado');setModal(null);setEditViaje(null)
+  }
+
+  const saveConsumo = async form => {
+    if(!form.vehiculo_id||!form.fecha||!form.litros_100km){notify('Completá los campos obligatorios *','warning');return}
+    setSaving(true)
+    const {error}=await supabase.from('consumo_vehiculo').insert([{
+      empresa_id:EMPRESA_ID,
+      vehiculo_id:form.vehiculo_id,
+      vehiculo_nombre:form.vehiculo_nombre,
+      fecha:form.fecha,
+      litros_100km:parseFloat(form.litros_100km),
+      observaciones:form.observaciones||'',
+      es_demo:isDemo,
+    }])
+    if(error){setSaving(false);notify('Error: '+error.message,'error');return}
+    setSaving(false);notify('Consumo registrado');setModal(null)
   }
 
   const saveCombustible = async form => {
@@ -287,8 +358,9 @@ export default function App(){
     notify('Eliminado','error')
   }
 
-  function ViajeForm(){
-    const [f,setF]=useState({fecha:today(),vehiculo_id:'',vehiculo_nombre:'',chofer_id:'',chofer:'',cliente:'Aeromar Internacional SRL',origen:'',destino:'',tipo_carga:'Seca',km_recorridos:'',precio_gs:'',precio_usd:'',nro_viaje:'1',factura:'',nro_evento:'',estado:'Confirmado',observaciones:''})
+  function ViajeForm({initial,onSave}){
+    const def={fecha:today(),vehiculo_id:'',vehiculo_nombre:'',chofer_id:'',chofer:'',cliente:'Aeromar Internacional SRL',origen:'',destino:'',tipo_carga:'Seca',km_recorridos:'',precio_gs:'',precio_usd:'',nro_viaje:'1',factura:'',nro_evento:'',estado:'Confirmado',observaciones:''}
+    const [f,setF]=useState(initial||def)
     const upd=(k,v)=>setF(p=>({...p,[k]:v}))
     const selVeh=id=>{const v=vehiculos.find(x=>x.id===id);if(v)setF(p=>({...p,vehiculo_id:id,vehiculo_nombre:v.nombre}))}
     const selChofer=id=>{const c=choferes.find(x=>x.id===id);if(c)setF(p=>({...p,chofer_id:id,chofer:c.nombre}))}
@@ -328,8 +400,32 @@ export default function App(){
         <div className="fg-full"><label className="flabel">Observaciones</label><input className="finput" placeholder="Ej: 13 pallets, temperatura especial…" value={f.observaciones} onChange={e=>upd('observaciones',e.target.value)}/></div>
       </div>
       <div className="form-actions">
+        <button className="btn" onClick={()=>{setModal(null);setEditViaje(null)}}>Cancelar</button>
+        <button className="btn btn-primary" onClick={()=>onSave(f)} disabled={saving}>{saving?'Guardando…': initial?'✓ Guardar cambios':'✓ Registrar viaje'}</button>
+      </div>
+    </>
+  }
+
+  function ConsumoForm(){
+    const [f,setF]=useState({fecha:today(),vehiculo_id:'',vehiculo_nombre:'',litros_100km:'',observaciones:''})
+    const upd=(k,v)=>setF(p=>({...p,[k]:v}))
+    const selVeh=id=>{const v=vehiculos.find(x=>x.id===id);if(v)setF(p=>({...p,vehiculo_id:id,vehiculo_nombre:v.nombre}))}
+    const vehSinMoto=vehiculos.filter(v=>v.tipo!=='moto')
+    return <>
+      <div className="form-grid">
+        <div><label className="flabel">Fecha *</label><input type="date" className="finput" value={f.fecha} onChange={e=>upd('fecha',e.target.value)}/></div>
+        <div><label className="flabel">Vehículo *</label>
+          <select className="finput" value={f.vehiculo_id} onChange={e=>selVeh(e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {vehSinMoto.map(v=><option key={v.id} value={v.id}>{v.nombre}</option>)}
+          </select>
+        </div>
+        <div><label className="flabel">Consumo (L/100km) *</label><input type="number" step="0.1" className="finput" placeholder="Ej: 8.5" value={f.litros_100km} onChange={e=>upd('litros_100km',e.target.value)}/></div>
+        <div><label className="flabel">Observaciones</label><input className="finput" placeholder="Ej: carga pesada, ruta montañosa…" value={f.observaciones} onChange={e=>upd('observaciones',e.target.value)}/></div>
+      </div>
+      <div className="form-actions">
         <button className="btn" onClick={()=>setModal(null)}>Cancelar</button>
-        <button className="btn btn-primary" onClick={()=>saveViaje(f)} disabled={saving}>{saving?'Guardando…':'✓ Registrar viaje'}</button>
+        <button className="btn btn-primary" onClick={()=>saveConsumo(f)} disabled={saving}>{saving?'Guardando…':'✓ Registrar consumo'}</button>
       </div>
     </>
   }
@@ -484,22 +580,25 @@ export default function App(){
   if(!user) return <Login onLogin={handleLogin}/>
 
   const NAV=[
-    {id:'dashboard',label:'Dashboard',icon:'▦'},
-    {id:'flota',label:'Flota',icon:'🚛'},
-    {id:'viajes',label:'Viajes',icon:'🗺'},
-    {id:'combustible',label:'Combustible',icon:'⛽'},
-    {id:'taller',label:'Taller',icon:'🔧'},
-    {id:'habilitaciones',label:'Habilitaciones',icon:'📋'},
-    {id:'mantenimientos',label:'Mantenimientos',icon:'🔩'},
-    {id:'choferes',label:'Choferes',icon:'👤'},
-    {id:'reportes',label:'Reportes',icon:'📊'},
-    {id:'tipocambio',label:'Tipo de cambio',icon:'💱'},
+    {id:'dashboard',label:'Dashboard',icon:<LayoutDashboard size={18}/>},
+    {id:'flota',label:'Flota',icon:<Truck size={18}/>},
+    {id:'viajes',label:'Viajes',icon:<Map size={18}/>},
+    {id:'combustible',label:'Combustible',icon:<Fuel size={18}/>},
+    {id:'taller',label:'Taller',icon:<Wrench size={18}/>},
+    {id:'habilitaciones',label:'Habilitaciones',icon:<ClipboardList size={18}/>},
+    {id:'mantenimientos',label:'Mantenimientos',icon:<Settings size={18}/>},
+    {id:'choferes',label:'Choferes',icon:<Users size={18}/>},
+    {id:'reportes',label:'Reportes',icon:<BarChart2 size={18}/>},
+    {id:'tipocambio',label:'Tipo de cambio',icon:<ArrowLeftRight size={18}/>},
   ]
   const redAlerts=alerts.filter(a=>a.type==='red')
 
+  const habFiltradas = fHabVehiculo ? habilitaciones.filter(h=>h.vehiculo_nombre===fHabVehiculo) : habilitaciones
+  const manFiltrados = fManVehiculo ? mantenimientos.filter(m=>m.vehiculo_nombre===fManVehiculo) : mantenimientos
+
   return <div className="app">
     <Toast {...toast}/>
-    {modal&&<Modal title={modal.title} onClose={()=>setModal(null)}>{modal.content}</Modal>}
+    {modal&&<Modal title={modal.title} onClose={()=>{setModal(null);setEditViaje(null)}}>{modal.content}</Modal>}
     <header className="hdr">
       <div className="hdr-left">
         <button className="hdr-toggle" onClick={()=>setSidebarOpen(o=>!o)}>☰</button>
@@ -541,12 +640,10 @@ export default function App(){
             <div className="ph-actions">
               <select className="finput" style={{width:'auto'}} value={fMes} onChange={e=>setFMes(parseInt(e.target.value))}>{MESES.map((m,i)=><option key={i} value={i}>{m}</option>)}</select>
               <select className="finput" style={{width:'auto'}} value={fAnio} onChange={e=>setFAnio(parseInt(e.target.value))}>{[2025,2026,2027].map(y=><option key={y}>{y}</option>)}</select>
-              <button className="btn" onClick={loadAll}>↻</button>
             </div>
           </div>
-          {alerts.length>0&&<div className="alert-list">{alerts.map((a,i)=><div key={i} className={`alert-item ${a.type}`}><span className="alert-icon">⚠</span>{a.msg}</div>)}</div>}
           <div className="metrics">
-            <Metric label="Viajes del mes" value={viajesMes.filter(v=>!v.es_interno).length} color="blue"/>
+            <Metric label="Viajes del mes" value={viajesMes.filter(v=>!v.es_interno).length} sub="este mes"/>
             <Metric label="Facturado Gs." value={`₲ ${fmtGs(totalGs)}`} color="blue" sub="este mes"/>
             <Metric label="Facturado USD" value={`$ ${fmtUsd(totalUsd)}`} color="green" sub="este mes"/>
             <Metric label="Km recorridos" value={`${fmtGs(kmMes)} km`} sub="este mes"/>
@@ -602,11 +699,22 @@ export default function App(){
             {vehiculos.map(v=>{
               const pct=fuelPct(v);const fc=fuelColor(v,configAlertas)
               const viajesHoy=viajes.filter(j=>j.vehiculo_nombre===v.nombre&&j.fecha===today()).length
+              const esMoto=v.tipo==='moto'
+              const consumoMes=esMoto?null:getConsumoMes(v.id,new Date().getMonth(),new Date().getFullYear())
+              const consumoHist=esMoto?null:getConsumoHistorico(v.id)
               return <div key={v.id} className="vcard">
                 <div className="vcard-header"><div><div className="vcard-name">{v.nombre}</div><div className="vcard-type">{v.marca} {v.modelo} · {v.chapa}</div></div><Badge text={v.estado}/></div>
                 <div className="vcard-row"><span className="vcard-row-label">Chofer</span><span className="vcard-row-val">{v.chofer_asignado||'—'}</span></div>
                 <div className="vcard-row"><span className="vcard-row-label">Odómetro</span><span className="vcard-row-val">{fmtGs(v.odometro_actual)} km</span></div>
                 <div className="vcard-row"><span className="vcard-row-label">Viajes hoy</span><span className="vcard-row-val">{viajesHoy}</span></div>
+                {!esMoto&&<div className="vcard-row">
+                  <span className="vcard-row-label">Consumo {MESES[new Date().getMonth()]}</span>
+                  <span className="vcard-row-val" style={{color:consumoMes?'var(--blue)':'var(--gray-400)'}}>{consumoMes?`${consumoMes} L/100km`:'Sin datos'}</span>
+                </div>}
+                {!esMoto&&consumoHist&&<div className="vcard-row">
+                  <span className="vcard-row-label">Promedio histórico</span>
+                  <span className="vcard-row-val" style={{color:'var(--gray-600)'}}>{consumoHist} L/100km</span>
+                </div>}
                 {v.limite_combustible>0&&<div className="vcard-fuel">
                   <div className="fuel-label"><span>Combustible {MESES[new Date().getMonth()]}</span><span className={pct>=configAlertas.combustible_rojo?'td-r':pct>=configAlertas.combustible_naranja?'td-a':''}>{pct}%</span></div>
                   <div className="fuel-bar"><div className={`fuel-fill ${fc}`} style={{width:`${pct}%`}}/></div>
@@ -627,7 +735,8 @@ export default function App(){
               <select className="finput" style={{width:'auto'}} value={fVehiculo} onChange={e=>setFVehiculo(e.target.value)}><option value="">Todos los vehículos</option>{vehiculos.map(v=><option key={v.id}>{v.nombre}</option>)}</select>
               <select className="finput" style={{width:'auto'}} value={fChofer} onChange={e=>setFChofer(e.target.value)}><option value="">Todos los choferes</option>{choferes.map(c=><option key={c.id}>{c.nombre}</option>)}</select>
               <select className="finput" style={{width:'auto'}} value={fEstado} onChange={e=>setFEstado(e.target.value)}><option value="">Todos los estados</option><option>Confirmado</option><option>A confirmar</option><option>Completado</option><option>Cancelado</option></select>
-              {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar viaje',content:<ViajeForm/>})}>+ Nuevo viaje</button>}
+              {canEdit&&<button className="btn btn-secondary" onClick={()=>setModal({title:'Registrar consumo L/100km',content:<ConsumoForm/>})}>⛽ Consumo</button>}
+              {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar viaje',content:<ViajeForm onSave={saveViaje}/>})}>+ Nuevo viaje</button>}
             </div>
           </div>
           <div className="metrics">
@@ -648,7 +757,10 @@ export default function App(){
                 <td>{v.precio_usd?`$ ${fmtUsd(v.precio_usd)}`:'-'}</td>
                 <td className="td-m">{v.factura||'-'}</td><td><Badge text={v.estado}/></td>
                 <td className="td-m" style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={v.observaciones}>{v.observaciones||'-'}</td>
-                {canEdit&&<td><button className="btn btn-xs btn-danger" onClick={()=>deleteRow('viajes',v.id)}>✕</button></td>}
+                {canEdit&&<td><div className="ra">
+                  <button className="btn btn-xs" onClick={()=>{setEditViaje(v);setModal({title:'Editar viaje',content:<ViajeForm initial={v} onSave={updateViaje}/>})}}>✎</button>
+                  <button className="btn btn-xs btn-danger" onClick={()=>deleteRow('viajes',v.id)}>✕</button>
+                </div></td>}
               </tr>)}
             </tbody>
           </table></div></div>
@@ -723,13 +835,19 @@ export default function App(){
         {!loading&&tab==='habilitaciones'&&<>
           <div className="ph">
             <div><div className="ph-title">Habilitaciones y documentos</div><div className="ph-sub">Vencimientos por vehículo con alertas automáticas</div></div>
-            {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar habilitación / documento',content:<HabilitacionForm/>})}>+ Agregar</button>}
+            <div className="ph-actions">
+              <select className="finput" style={{width:'auto'}} value={fHabVehiculo} onChange={e=>setFHabVehiculo(e.target.value)}>
+                <option value="">Todos los vehículos</option>
+                {vehiculos.map(v=><option key={v.id}>{v.nombre}</option>)}
+              </select>
+              {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar habilitación / documento',content:<HabilitacionForm/>})}>+ Agregar</button>}
+            </div>
           </div>
           <div className="card card-np"><div className="tw"><table className="tbl">
             <thead><tr><th>Vehículo</th><th>Tipo</th><th>Vencimiento</th><th>Días restantes</th><th>Alerta</th><th>Estado</th>{canEdit&&<th></th>}</tr></thead>
             <tbody>
-              {habilitaciones.length===0&&<tr><td colSpan={7}><Empty text="No hay documentos cargados."/></td></tr>}
-              {habilitaciones.map(h=>{const d=diffDays(h.fecha_vencimiento);return <tr key={h.id}>
+              {habFiltradas.length===0&&<tr><td colSpan={7}><Empty text="No hay documentos cargados."/></td></tr>}
+              {habFiltradas.map(h=>{const d=diffDays(h.fecha_vencimiento);return <tr key={h.id}>
                 <td className="td-b">{h.vehiculo_nombre}</td><td>{h.tipo}</td><td>{h.fecha_vencimiento}</td>
                 <td className={d<=0?'td-r':d<=7?'td-r':d<=h.dias_alerta?'td-a':'td-g'}>{d<=0?`Vencida hace ${Math.abs(d)} días`:`${d} días`}</td>
                 <td className="td-m">{h.dias_alerta} días</td>
@@ -743,13 +861,19 @@ export default function App(){
         {!loading&&tab==='mantenimientos'&&<>
           <div className="ph">
             <div><div className="ph-title">Mantenimientos</div><div className="ph-sub">Servicios preventivos planificados. Para fallas usá Taller.</div></div>
-            {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar mantenimiento',content:<MantenimientoForm/>})}>+ Agregar</button>}
+            <div className="ph-actions">
+              <select className="finput" style={{width:'auto'}} value={fManVehiculo} onChange={e=>setFManVehiculo(e.target.value)}>
+                <option value="">Todos los vehículos</option>
+                {vehiculos.map(v=><option key={v.id}>{v.nombre}</option>)}
+              </select>
+              {canEdit&&<button className="btn btn-primary" onClick={()=>setModal({title:'Registrar mantenimiento',content:<MantenimientoForm/>})}>+ Agregar</button>}
+            </div>
           </div>
           <div className="card card-np"><div className="tw"><table className="tbl">
             <thead><tr><th>Vehículo</th><th>Tipo</th><th>Último</th><th>Próximo</th><th>Días restantes</th><th>Km próximo</th><th>Costo est.</th><th>Estado</th>{canEdit&&<th></th>}</tr></thead>
             <tbody>
-              {mantenimientos.length===0&&<tr><td colSpan={9}><Empty text="No hay mantenimientos registrados."/></td></tr>}
-              {mantenimientos.map(m=>{const d=diffDays(m.fecha_proximo);return <tr key={m.id}>
+              {manFiltrados.length===0&&<tr><td colSpan={9}><Empty text="No hay mantenimientos registrados."/></td></tr>}
+              {manFiltrados.map(m=>{const d=diffDays(m.fecha_proximo);return <tr key={m.id}>
                 <td className="td-b">{m.vehiculo_nombre}</td><td>{m.tipo}</td>
                 <td className="td-m">{m.fecha_ultimo||'—'}</td><td>{m.fecha_proximo}</td>
                 <td className={d<=0?'td-r':d<=7?'td-r':d<=m.dias_alerta?'td-a':'td-g'}>{d<=0?`Vencido hace ${Math.abs(d)} días`:`${d} días`}</td>
@@ -803,18 +927,19 @@ export default function App(){
             <div className="card">
               <div className="card-header"><div className="card-title">Por vehículo — {MESES[fMes]} {fAnio}</div></div>
               <div className="tw"><table className="tbl">
-                <thead><tr><th>Vehículo</th><th>Viajes</th><th>Km</th><th>Total Gs.</th><th>Total USD</th></tr></thead>
+                <thead><tr><th>Vehículo</th><th>Viajes</th><th>Km</th><th>L/100km</th><th>Total Gs.</th><th>Total USD</th></tr></thead>
                 <tbody>
-                  {vehiculos.map(v=>{const vs=viajesMes.filter(j=>j.vehiculo_nombre===v.nombre);if(!vs.length) return null;return <tr key={v.id}>
+                  {vehiculos.map(v=>{const vs=viajesMes.filter(j=>j.vehiculo_nombre===v.nombre);if(!vs.length) return null;const cons=v.tipo!=='moto'?getConsumoMes(v.id,fMes,fAnio):null;return <tr key={v.id}>
                     <td className="td-b">{v.nombre}</td><td>{vs.length}</td>
                     <td>{fmtGs(vs.reduce((a,j)=>a+(parseInt(j.km_recorridos)||0),0))} km</td>
+                    <td className="td-m">{cons?`${cons} L/100km`:'—'}</td>
                     <td>₲ {fmtGs(vs.reduce((a,j)=>a+(parseInt(j.precio_gs)||0),0))}</td>
                     <td>$ {fmtUsd(vs.reduce((a,j)=>a+(parseFloat(j.precio_usd)||0),0))}</td>
                   </tr>})}
-                  {viajesMes.length===0&&<tr><td colSpan={5}><Empty/></td></tr>}
+                  {viajesMes.length===0&&<tr><td colSpan={6}><Empty/></td></tr>}
                   {viajesMes.length>0&&<tr style={{background:'var(--gray-50)',fontWeight:700}}>
                     <td>TOTAL</td><td>{viajesMes.filter(v=>!v.es_interno).length}</td>
-                    <td>{fmtGs(kmMes)} km</td><td>₲ {fmtGs(totalGs)}</td><td>$ {fmtUsd(totalUsd)}</td>
+                    <td>{fmtGs(kmMes)} km</td><td>—</td><td>₲ {fmtGs(totalGs)}</td><td>$ {fmtUsd(totalUsd)}</td>
                   </tr>}
                 </tbody>
               </table></div>
